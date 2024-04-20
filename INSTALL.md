@@ -4,80 +4,71 @@ We provide two ways to install SAVER. The first one is to install full VirtualBo
 
 The second way to install SAVER is to download a binary executable file for Linux. We recommend this way if your purpose is to apply SAVER to your C project. We have confirmed that this executable works in an Ubuntu 16.04 system, hence we believe that it may also work in other similar systems, too. If you experience any trouble using SAVER in your setup, please contact the author(s). We would be happy to help you.
 
-## 1. Installing a Virtual Machine Image
-
-1. Download and install VirtualBox at [here](https://www.virtualbox.org/wiki/Downloads)
-2. Download the VM image: [ICSE20_SAVER_artifacts.tar.gz](https://drive.google.com/open?id=1PHUBRDuzSKxHRIbUYNgdNnPamiSp0Fe1) 
-3. Install the `.vdi` file with VirtualBox.
-
-*NOTE:*
-
-- **This is a large file: The size of the tarball itself is 6GB. If you decompress it, you obtain an additional 20GB `.vdi` file.**
-- **The experiment setup: Our data was obtained using a 32GB of memory and four virtual processors powered by an Intel Core i7-7700 processor. Also, about 10GB of additional disk space may be required running our scripts.**
-
-## 2. Installing a Linux Binary
-
-1. Download the tarball: [saver.tar.gz](https://koreaoffice-my.sharepoint.com/:u:/g/personal/seongjoon_korea_ac_kr/EdCX8t7ioXtFtfb4vxNhAZ8B5OctTl7fTPKAh4LI9YvsUA?e=5JGVWv)
-2. Decompress it with `tar xvzf saver.tar.gz`
-3. Add the directory where the bin file is located to the PATH. For example, you may use ones like below:
-    * export PATH=".../saver/bin/infer:$PATH"
-    * alias infer=".../saver/bin/infer"
-
 # Testing
 
-### An Example Test
+## An Example Test
 
 We show a brief test run on a simple conditional leak example. Below is a test program (located at `tests/overview-example/`) which shows a conditional memory leak. If the program executes the else branch, memory dynamically allocated to `p` never gets freed.
 
 ```C
-  1 #include <stdio.h>
-  2 #include <stdlib.h>
-  3 
-  4 int main() {
-  5   int *p, *q;
-  6   int i;
-  7 
-  8   p = malloc(1); // o1
-  9   if (i)
- 10     q = p;
- 11   else
- 12     q = malloc(2); // o2
- 13 
- 14   *q = 1;
- 15   free(q);
- 16 
- 17   return 0; // o1 leaks here
- 18 }
+#include <stdio.h>
+#include <stdlib.h>
 
+int main() {
+  int *p, *q;
+  int i;
+
+  p = malloc(1); // o1
+  if (i)
+    q = p;
+  else
+    q = malloc(2); // o2
+
+  *q = 1;
+  free(q);
+
+  return 0; // o1 leaks here
+}
 ```
 
 First, let Infer compile this file and diagnose the problem:
 
 ```BASH
-infer -g run -- clang overview-example.c
+infer --pulse -g run -- clang example.c
 ```
 
 Infer then reports the following memory-leak:
+
 ```BASH
-overview-example.c:12: error: MEMORY_LEAK (biabduction/Abs.ml:1082:18-25:)
-  memory dynamically allocated by call to `malloc()` at line 8, column 7 is not reachable after line 12, column 9.
-  10.       q = p;
-  11.     else
-  12. >     q = malloc(2); // o2
-  13.   
-  14.     *q = 1;
+overview-example.c:9: error: Memory Leak
+  memory dynamically allocated at line 8 by call to `malloc`, is not reachable after line 9, column 7.
+   7. 
+   8.   p = malloc(1); // o1
+   9.   if (i)
+            ^
+  10.     q = p;
+  11.   else
 ```
 
 We have already prepared an error report in `.json` format called `error-report.json` in the directory:
+
 ```JSON
 {
   "err_type": "MEMORY_LEAK",
-  "source": { "node": { "filename": "overview-example.c", "procedure": "main", "line": 8 }, "exp": null },
-    "sink": { "node": { "filename": "overview-example.c", "procedure": "main", "line": 12 }, "exp": null }
+  "source": {
+      "filepath": "/root/example.c",
+      "line": 8
+  },
+  "sink": {
+      "filepath": "/root/example.c",
+      "line": 12
+  }
 }
 ```
+
 The error report consists of source and sink information for a memory leak which can be obtained from usual memory leak detectors.
 This serves as an error report that SAVER can consume. Feed it to SAVER, and it will suggest a fix.
+
 ```BASH
 infer saver --error-report report.json
 ```
